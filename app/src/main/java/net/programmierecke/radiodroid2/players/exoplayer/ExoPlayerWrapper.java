@@ -1,15 +1,14 @@
 package net.programmierecke.radiodroid2.players.exoplayer;
 
-
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.media.AudioManager;
 import android.net.Uri;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v7.preference.PreferenceManager;
 import android.util.Log;
 
+import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.DefaultRenderersFactory;
 import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.ExoPlayerFactory;
@@ -18,7 +17,9 @@ import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
 import com.google.android.exoplayer2.Timeline;
+import com.google.android.exoplayer2.audio.AudioAttributes.Builder;
 import com.google.android.exoplayer2.audio.AudioRendererEventListener;
+import com.google.android.exoplayer2.audio.AudioSink;
 import com.google.android.exoplayer2.decoder.DecoderCounters;
 import com.google.android.exoplayer2.extractor.DefaultExtractorsFactory;
 import com.google.android.exoplayer2.extractor.ExtractorsFactory;
@@ -35,11 +36,11 @@ import com.google.android.exoplayer2.upstream.DataSource;
 import com.google.android.exoplayer2.upstream.DefaultBandwidthMeter;
 
 import net.programmierecke.radiodroid2.R;
-import net.programmierecke.radiodroid2.recording.RecordableListener;
 import net.programmierecke.radiodroid2.data.ShoutcastInfo;
 import net.programmierecke.radiodroid2.data.StreamLiveInfo;
 import net.programmierecke.radiodroid2.players.PlayerWrapper;
 import net.programmierecke.radiodroid2.players.RadioPlayer;
+import net.programmierecke.radiodroid2.recording.RecordableListener;
 
 import java.util.Map;
 
@@ -67,7 +68,7 @@ public class ExoPlayerWrapper implements PlayerWrapper, IcyDataSource.IcyDataSou
     public void playRemote(@NonNull OkHttpClient httpClient, @NonNull String streamUrl, @NonNull Context context, boolean isAlarm) {
         // I don't know why, but it is still possible that streamUrl is null,
         // I still get exceptions from this from google
-        if (streamUrl == null){
+        if (streamUrl == null) {
             return;
         }
         if (!streamUrl.equals(this.streamUrl)) {
@@ -87,7 +88,13 @@ public class ExoPlayerWrapper implements PlayerWrapper, IcyDataSource.IcyDataSou
             TrackSelector trackSelector = new DefaultTrackSelector(videoTrackSelectionFactory);
 
             player = ExoPlayerFactory.newSimpleInstance(new DefaultRenderersFactory(context), trackSelector);
-            player.setAudioStreamType(isAlarm ? AudioManager.STREAM_ALARM : AudioManager.STREAM_MUSIC);
+            //player.setAudioStreamType(isAlarm ? AudioManager.STREAM_ALARM : AudioManager.STREAM_MUSIC);
+            //player.setAudioStreamType(isAlarm ? C.STREAM_TYPE_ALARM : C.STREAM_TYPE_MUSIC);
+
+            //instead of setAudioStreamType
+            player.setAudioAttributes(isAlarm ?
+                    new Builder().setUsage(C.USAGE_ALARM).build() :
+                    new Builder().setContentType(C.CONTENT_TYPE_MUSIC).build());
 
             player.addListener(new ExoPlayerListener());
             player.setAudioDebugListener(new AudioEventListener());
@@ -143,7 +150,6 @@ public class ExoPlayerWrapper implements PlayerWrapper, IcyDataSource.IcyDataSou
     @Override
     public boolean isPlaying() {
         return player != null && player.getPlayWhenReady();
-
     }
 
     @Override
@@ -257,8 +263,20 @@ public class ExoPlayerWrapper implements PlayerWrapper, IcyDataSource.IcyDataSou
 
     private class ExoPlayerListener implements Player.EventListener {
 
+        /**
+         * Called when the timeline and/or manifest has been refreshed.
+         * <p>
+         * Note that if the timeline has changed then a position discontinuity may also have occurred.
+         * For example, the current period index may have changed as a result of periods being added or
+         * removed from the timeline. This will <em>not</em> be reported via a separate call to
+         * {@link #onPositionDiscontinuity(int)}.
+         *
+         * @param timeline The latest timeline. Never null, but may be empty.
+         * @param manifest The latest manifest. May be null.
+         * @param reason   The {@link Player.TimelineChangeReason} responsible for this timeline change.
+         */
         @Override
-        public void onTimelineChanged(Timeline timeline, Object manifest) {
+        public void onTimelineChanged(Timeline timeline, Object manifest, int reason) {
             // Do nothing
         }
 
@@ -282,6 +300,16 @@ public class ExoPlayerWrapper implements PlayerWrapper, IcyDataSource.IcyDataSou
             // Do nothing
         }
 
+        /**
+         * Called when the value of {@link Player.getShuffleModeEnabled} changes.
+         *
+         * @param shuffleModeEnabled Whether shuffling of windows is enabled.
+         */
+        @Override
+        public void onShuffleModeEnabledChanged(boolean shuffleModeEnabled) {
+
+        }
+
         @Override
         public void onPlayerError(ExoPlaybackException error) {
             // Stop playing since it is either irrecoverable error in the player or our data source failed to reconnect.
@@ -291,14 +319,37 @@ public class ExoPlayerWrapper implements PlayerWrapper, IcyDataSource.IcyDataSou
             stateListener.onPlayerError(R.string.error_play_stream);
         }
 
+        /**
+         * Called when a position discontinuity occurs without a change to the timeline. A position
+         * discontinuity occurs when the current window or period index changes (as a result of playback
+         * transitioning from one period in the timeline to the next), or when the playback position
+         * jumps within the period currently being played (as a result of a seek being performed, or
+         * when the source introduces a discontinuity internally).
+         * <p>
+         * When a position discontinuity occurs as a result of a change to the timeline this method is
+         * <em>not</em> called. {@link #onTimelineChanged(Timeline, Object, int)} is called in this
+         * case.
+         *
+         * @param reason The {@link Player.DiscontinuityReason} responsible for the discontinuity.
+         */
         @Override
-        public void onPositionDiscontinuity() {
-            // Do nothing
+        public void onPositionDiscontinuity(int reason) {
+
         }
 
         @Override
         public void onPlaybackParametersChanged(PlaybackParameters playbackParameters) {
             // Do nothing
+        }
+
+        /**
+         * Called when all pending seek requests have been processed by the player. This is guaranteed
+         * to happen after any necessary changes to the player state were reported to
+         * {@link #onPlayerStateChanged(boolean, int)}.
+         */
+        @Override
+        public void onSeekProcessed() {
+
         }
     }
 
@@ -323,8 +374,17 @@ public class ExoPlayerWrapper implements PlayerWrapper, IcyDataSource.IcyDataSou
 
         }
 
+        /**
+         * Called when an {@link AudioSink} underrun occurs.
+         *
+         * @param bufferSize             The size of the {@link AudioSink}'s buffer, in bytes.
+         * @param bufferSizeMs           The size of the {@link AudioSink}'s buffer, in milliseconds, if it is
+         *                               configured for PCM output. {@link C#TIME_UNSET} if it is configured for passthrough output,
+         *                               as the buffered media can have a variable bitrate so the duration may be unknown.
+         * @param elapsedSinceLastFeedMs The time since the {@link AudioSink} was last fed data.
+         */
         @Override
-        public void onAudioTrackUnderrun(int bufferSize, long bufferSizeMs, long elapsedSinceLastFeedMs) {
+        public void onAudioSinkUnderrun(int bufferSize, long bufferSizeMs, long elapsedSinceLastFeedMs) {
 
         }
 

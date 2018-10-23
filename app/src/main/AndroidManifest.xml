@@ -10,11 +10,20 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
+    <!--for api 28 https://stackoverflow.com/a/52383103/2886841-->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+
+    <!--android:usesCleartextTraffic="true" for api 28
+    https://stackoverflow.com/a/50834600/2886841-->
+
     <application
         android:name=".RadioDroidApp"
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="@string/app_name"
+
+        android:usesCleartextTraffic="true"
         android:theme="@style/MyMaterialTheme">
         <provider
             android:authorities="net.programmierecke.radiodroid2.fileprovider"
